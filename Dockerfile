@@ -1,27 +1,38 @@
 FROM node:18-alpine
 
+# Install system dependencies for faster builds
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
+
+# Copy package files first for better Docker layer caching
+COPY package*.json ./
+COPY server/package*.json ./server/
+COPY collector/package*.json ./collector/
+COPY frontend/package*.json ./frontend/
+
+# Install dependencies (this layer will be cached if package.json doesn't change)
+RUN npm ci --only=production --legacy-peer-deps && \
+    cd server && npm ci --only=production --legacy-peer-deps && \
+    cd ../collector && npm ci --only=production --legacy-peer-deps && \
+    cd ../frontend && npm ci --legacy-peer-deps
 
 # Copy source code
 COPY . .
 
-# Install dependencies for all components
-RUN npm install --legacy-peer-deps && \
-    cd server && npm install --legacy-peer-deps && \
-    cd ../collector && npm install --legacy-peer-deps && \
-    cd ../frontend && npm install --legacy-peer-deps
-
-# Build frontend
+# Build frontend (most time-consuming step)
 RUN cd frontend && npm run build
 
-# Generate Prisma client (this is likely what you need for your Prisma changes)
+# Generate Prisma client
 RUN cd server && npx prisma generate
 
-# Switch to root for permissions
+# Clean up to reduce image size
+RUN npm cache clean --force && \
+    rm -rf /tmp/* /var/cache/apk/*
+
 USER root
 
-# Create storage directories with proper permissions
-# Using -p flag to prevent errors if they exist
+# Your storage permissions (keeping exactly as you had)
 RUN mkdir -p /app/server/storage \
     /app/server/storage/documents \
     /app/server/storage/vector-cache \
@@ -34,37 +45,27 @@ RUN mkdir -p /app/server/storage \
     /app/collector/outputs \
     /app/logs
 
-# CRITICAL: Set ownership to UID 1000 (Railway's default user)
-# Using UID directly avoids user/group creation issues
 RUN chown -R 1000:1000 /app/server && \
     chown -R 1000:1000 /app/collector && \
     chown -R 1000:1000 /app/logs || true
 
-# Set full permissions for the storage directories
 RUN chmod -R 777 /app/server/storage && \
     chmod -R 777 /app/collector && \
     chmod -R 777 /app/logs || true
 
-# Handle potential Railway volume mount paths
-# Railway might mount at /storage or /data
 RUN mkdir -p /storage /data && \
     chown -R 1000:1000 /storage /data && \
     chmod -R 777 /storage /data || true
 
-# Create symbolic links for various mount possibilities
 RUN ln -sf /storage /app/server/storage 2>/dev/null || true && \
     ln -sf /data /app/server/storage 2>/dev/null || true
 
-# Set environment variables
 ENV STORAGE_DIR=/app/server/storage \
     PERSIST_DATA=true \
     NODE_ENV=production \
     SERVER_PORT=3001 \
     FILE_UPLOAD_MAX_SIZE=100mb
 
-# Switch to UID 1000 (Railway's expected user)
 USER 1000
-
 EXPOSE 3001
-
 CMD ["node", "server/index.js"]
