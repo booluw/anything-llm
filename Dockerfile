@@ -61,4 +61,4 @@ ENV STORAGE_DIR=/app/server/storage \
 
 USER 1000
 EXPOSE 3001
-CMD ["node", "server/index.js"]
+CMD ["node", "index.js"]
