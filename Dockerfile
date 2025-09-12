@@ -1,3 +1,4 @@
+USER root
 FROM ubuntu:jammy-20240627.1 AS base
 
 # Build arguments - Use Railway's UID 1000
