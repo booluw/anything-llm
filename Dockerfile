@@ -1,34 +1,27 @@
-FROM node:18-alpine
-
-# Install system dependencies for faster builds
-RUN apk add --no-cache python3 make g++
+FROM node:18
 
 WORKDIR /app
 
-# Copy package files first for better Docker layer caching
-COPY package*.json ./
-COPY server/package*.json ./server/
-COPY collector/package*.json ./collector/
-COPY frontend/package*.json ./frontend/
+# Install pnpm globally (AnythingLLM uses pnpm)
+RUN npm install -g pnpm
 
-# Install dependencies (this layer will be cached if package.json doesn't change)
-RUN npm ci --only=production --legacy-peer-deps && \
-    cd server && npm ci --only=production --legacy-peer-deps && \
-    cd ../collector && npm ci --only=production --legacy-peer-deps && \
-    cd ../frontend && npm ci --legacy-peer-deps
+# Copy package.json only (no pnpm-lock.yaml to avoid errors)
+COPY package.json ./
+
+# Install dependencies
+RUN pnpm install
 
 # Copy source code
 COPY . .
 
-# Build frontend (most time-consuming step)
-RUN cd frontend && npm run build
+# Build the server app (TypeScript -> JavaScript)
+RUN pnpm --filter server build
 
 # Generate Prisma client
 RUN cd server && npx prisma generate
 
-# Clean up to reduce image size
-RUN npm cache clean --force && \
-    rm -rf /tmp/* /var/cache/apk/*
+# Set working directory to the server app
+WORKDIR /app/apps/server
 
 USER root
 
@@ -64,7 +57,7 @@ ENV STORAGE_DIR=/app/server/storage \
     PERSIST_DATA=true \
     NODE_ENV=production \
     SERVER_PORT=3001 \
-    FILE_UPLOAD_MAX_SIZE=100mb
+    FILE_UPLOAD_MAX_SIZE=1000mb
 
 USER 1000
 EXPOSE 3001
