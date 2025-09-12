@@ -1,20 +1,27 @@
-# Use Node.js as base image (AnythingLLM is a Node.js app)
 FROM node:18-alpine
 
-# Set working directory
 WORKDIR /app
 
-# Copy your source code
+# Copy source code
 COPY . .
 
-# Install dependencies and build the application
-RUN npm install --legacy-peer-deps
-RUN npm run build
+# Install dependencies for all components
+RUN npm install --legacy-peer-deps && \
+    cd server && npm install --legacy-peer-deps && \
+    cd ../collector && npm install --legacy-peer-deps && \
+    cd ../frontend && npm install --legacy-peer-deps
 
-# Switch to root to create directories and set permissions
+# Build frontend
+RUN cd frontend && npm run build
+
+# Generate Prisma client (this is likely what you need for your Prisma changes)
+RUN cd server && npx prisma generate
+
+# Switch to root for permissions
 USER root
 
 # Create storage directories with proper permissions
+# Using -p flag to prevent errors if they exist
 RUN mkdir -p /app/server/storage \
     /app/server/storage/documents \
     /app/server/storage/vector-cache \
@@ -27,7 +34,8 @@ RUN mkdir -p /app/server/storage \
     /app/collector/outputs \
     /app/logs
 
-# Set ownership to UID 1000 (Railway's default user)
+# CRITICAL: Set ownership to UID 1000 (Railway's default user)
+# Using UID directly avoids user/group creation issues
 RUN chown -R 1000:1000 /app/server && \
     chown -R 1000:1000 /app/collector && \
     chown -R 1000:1000 /app/logs || true
@@ -38,6 +46,7 @@ RUN chmod -R 777 /app/server/storage && \
     chmod -R 777 /app/logs || true
 
 # Handle potential Railway volume mount paths
+# Railway might mount at /storage or /data
 RUN mkdir -p /storage /data && \
     chown -R 1000:1000 /storage /data && \
     chmod -R 777 /storage /data || true
@@ -58,5 +67,4 @@ USER 1000
 
 EXPOSE 3001
 
-# Start the application
-CMD ["node", "/app/server/index.js"]
+CMD ["node", "server/index.js"]
