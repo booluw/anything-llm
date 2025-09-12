@@ -220,4 +220,19 @@ HEALTHCHECK --interval=1m --timeout=10s --start-period=1m \
 
 # Run the server
 # CMD ["sh", "-c", "tail -f /dev/null"] # For development: keep container open
-ENTRYPOINT ["/bin/bash", "/usr/local/bin/docker-entrypoint.sh"]
+
+# Create custom entrypoint script for Railway permissions
+RUN echo '#!/bin/bash' > /usr/local/bin/railway-entrypoint.sh && \
+    echo 'echo "Setting up storage directories for Railway..."' >> /usr/local/bin/railway-entrypoint.sh && \
+    echo 'mkdir -p /app/server/storage/{documents,vector-cache,lancedb,outputs,uploads,workspaces,chats,models,tmp,cache,logs}' >> /usr/local/bin/railway-entrypoint.sh && \
+    echo 'mkdir -p /app/server/storage/models/{context-windows,embeddings,custom}' >> /usr/local/bin/railway-entrypoint.sh && \
+    echo 'mkdir -p /app/collector/{hotdir,outputs}' >> /usr/local/bin/railway-entrypoint.sh && \
+    echo 'mkdir -p /app/logs' >> /usr/local/bin/railway-entrypoint.sh && \
+    echo 'chmod -R 777 /app/server/storage /app/collector /app/logs 2>/dev/null || true' >> /usr/local/bin/railway-entrypoint.sh && \
+    echo 'echo "Storage setup complete, starting AnythingLLM..."' >> /usr/local/bin/railway-entrypoint.sh && \
+    echo 'exec /bin/bash /usr/local/bin/docker-entrypoint.sh "$@"' >> /usr/local/bin/railway-entrypoint.sh && \
+    chmod +x /usr/local/bin/railway-entrypoint.sh
+
+# Use the custom entrypoint
+ENTRYPOINT ["/bin/bash", "/usr/local/bin/railway-entrypoint.sh"]
+# ENTRYPOINT ["/bin/bash", "/usr/local/bin/docker-entrypoint.sh"]
