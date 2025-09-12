@@ -1,28 +1,27 @@
-# Use Node base image
 FROM node:18
 
-# Set working directory
+# Install pnpm globally
+RUN npm install -g pnpm
+
 WORKDIR /app
 
-# Copy package files and install dependencies
-COPY package*.json ./
-RUN npm install
-
-# Copy the rest of the app
+# Copy everything
 COPY . .
 
-# Set environment variables
-ENV NODE_ENV=production
-ENV PORT=3001
+# Install all workspace dependencies
+RUN pnpm install
 
-# ✅ Run as root to avoid EACCES issues with volumes
+# Build the server app (NestJS)
+RUN pnpm --filter server build
+
+# ✅ Run from the apps/server directory
+WORKDIR /app/apps/server
+
+# ✅ Run as root to allow writing to volumes
 USER root
 
-# Create models directory as a precaution (optional)
-RUN mkdir -p /app/data/models/context-windows
-
-# Expose port
+# Expose the port
 EXPOSE 3001
 
-# Start the app
-CMD ["npm", "run", "start"]
+# Start the backend server
+CMD ["node", "dist/main.js"]
