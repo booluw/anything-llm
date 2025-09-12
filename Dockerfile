@@ -162,7 +162,7 @@ WORKDIR /app
 COPY --chown=anythingllm:anythingllm --from=frontend-build /app/frontend/dist /app/server/public
 USER root
 
-# RAILWAY STORAGE PERMISSIONS FIX - Create all necessary directories
+# RAILWAY STORAGE PERMISSIONS FIX - Create ALL possible storage directories
 RUN mkdir -p /app/server/storage \
     /app/server/storage/documents \
     /app/server/storage/vector-cache \
@@ -171,17 +171,24 @@ RUN mkdir -p /app/server/storage \
     /app/server/storage/uploads \
     /app/server/storage/workspaces \
     /app/server/storage/chats \
+    /app/server/storage/models \
+    /app/server/storage/models/context-windows \
+    /app/server/storage/models/embeddings \
+    /app/server/storage/models/custom \
+    /app/server/storage/tmp \
+    /app/server/storage/cache \
+    /app/server/storage/logs \
     /app/collector/hotdir \
     /app/collector/outputs \
     /app/logs
 
-# RAILWAY STORAGE PERMISSIONS FIX - Set ownership and permissions
-RUN chown -R anythingllm:anythingllm /app/server && \
-    chown -R anythingllm:anythingllm /app/collector && \
-    chown -R anythingllm:anythingllm /app/logs
+# RAILWAY STORAGE PERMISSIONS FIX - Set ownership for everything under /app
+RUN chown -R 1000:1000 /app
 
-# RAILWAY STORAGE PERMISSIONS FIX - Set full permissions for storage directories
-RUN chmod -R 777 /app/server/storage && \
+# RAILWAY STORAGE PERMISSIONS FIX - Set write permissions for entire storage tree
+# This allows the app to create any subdirectories it needs at runtime
+RUN chmod -R 755 /app && \
+    chmod -R 777 /app/server/storage && \
     chmod -R 777 /app/collector && \
     chmod -R 777 /app/logs
 
