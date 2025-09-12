@@ -1,12 +1,9 @@
-# Use the official AnythingLLM image as base
 FROM mintplexlabs/anythingllm:latest
 
-# Railway runs as non-root user with UID 1000
-# We need to create a user with proper permissions
 USER root
 
-# Create the storage directory structure that AnythingLLM expects
-# These are the typical directories AnythingLLM needs write access to
+# Create storage directories with proper permissions
+# Using -p flag to prevent errors if they exist
 RUN mkdir -p /app/server/storage \
     /app/server/storage/documents \
     /app/server/storage/vector-cache \
@@ -16,42 +13,44 @@ RUN mkdir -p /app/server/storage \
     /app/server/storage/workspaces \
     /app/server/storage/chats \
     /app/collector/hotdir \
-    /app/collector/outputs
+    /app/collector/outputs \
+    /app/logs
 
-# Create a non-root user that matches Railway's expected UID (1000)
-# This is crucial for Railway compatibility
-RUN groupadd -g 1000 anythingllm && \
-    useradd -r -u 1000 -g anythingllm anythingllm
+# CRITICAL: Set ownership to UID 1000 (Railway's default user)
+# Using UID directly avoids user/group creation issues
+RUN chown -R 1000:1000 /app/server && \
+    chown -R 1000:1000 /app/collector && \
+    chown -R 1000:1000 /app/logs || true
 
-# Set ownership of all necessary directories to the new user
-RUN chown -R anythingllm:anythingllm /app/server/storage && \
-    chown -R anythingllm:anythingllm /app/collector && \
-    chown -R anythingllm:anythingllm /app
+# Set full permissions for the storage directories
+RUN chmod -R 777 /app/server/storage && \
+    chmod -R 777 /app/collector && \
+    chmod -R 777 /app/logs || true
 
-# Give full permissions to storage directories
-# 755 for directories, ensuring read/write/execute for owner
-RUN chmod -R 755 /app/server/storage && \
-    chmod -R 755 /app/collector
+# Handle potential Railway volume mount paths
+# Railway might mount at /storage or /data
+RUN mkdir -p /storage /data && \
+    chown -R 1000:1000 /storage /data && \
+    chmod -R 777 /storage /data || true
 
-# Set environment variables for AnythingLLM
-# Adjust the storage path to use Railway's volume mount point
+# Create symbolic links for various mount possibilities
+RUN ln -sf /storage /app/server/storage 2>/dev/null || true && \
+    ln -sf /data /app/server/storage 2>/dev/null || true
+
+# Set environment variables
 ENV STORAGE_DIR=/app/server/storage \
     PERSIST_DATA=true \
-    NODE_ENV=production
+    NODE_ENV=production \
+    SERVER_PORT=3001 \
+    FILE_UPLOAD_MAX_SIZE=100mb
 
-# If Railway mounts volume at a different path (like /storage), 
-# create symbolic links
-RUN ln -sf /storage /app/server/storage || true
+# Switch to UID 1000 (Railway's expected user)
+USER 1000
 
-# Switch to the non-root user
-USER anythingllm
-
-# Set working directory
 WORKDIR /app
 
-# The entrypoint should already be set in the base image
-# But if needed, you can override it:
-# ENTRYPOINT ["node", "/app/server/index.js"]
-
-# Expose the default AnythingLLM port
 EXPOSE 3001
+
+# Use the default entrypoint from base image
+# Or explicitly set it if needed
+CMD ["node", "/app/server/index.js"]
