@@ -1,27 +1,30 @@
 FROM node:18
 
-# Install pnpm globally
-RUN npm install -g pnpm
-
 WORKDIR /app
 
-# Copy everything
-COPY . .
+# Install pnpm globally (AnythingLLM uses pnpm)
+RUN npm install -g pnpm
 
-# Install all workspace dependencies
+# Copy package files to install dependencies
+COPY package.json pnpm-lock.yaml ./
+
+# Install all dependencies
 RUN pnpm install
 
-# Build the server app (NestJS)
+# Copy the full codebase
+COPY . .
+
+# Build the server (TypeScript -> JavaScript)
 RUN pnpm --filter server build
 
-# ✅ Run from the apps/server directory
+# Change working directory to the server app
 WORKDIR /app/apps/server
 
-# ✅ Run as root to allow writing to volumes
-USER root
+# Fix permissions on storage folder for Railway volumes
+RUN mkdir -p storage && chmod -R 777 storage
 
 # Expose the port
 EXPOSE 3001
 
-# Start the backend server
+# Start the server
 CMD ["node", "dist/main.js"]
