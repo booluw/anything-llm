@@ -1,9 +1,20 @@
-# FROM mintplexlabs/anythingllm:latest
+# Use Node.js as base image (AnythingLLM is a Node.js app)
+FROM node:18-alpine
 
+# Set working directory
+WORKDIR /app
+
+# Copy your source code
+COPY . .
+
+# Install dependencies and build the application
+RUN npm install --legacy-peer-deps
+RUN npm run build
+
+# Switch to root to create directories and set permissions
 USER root
 
 # Create storage directories with proper permissions
-# Using -p flag to prevent errors if they exist
 RUN mkdir -p /app/server/storage \
     /app/server/storage/documents \
     /app/server/storage/vector-cache \
@@ -16,8 +27,7 @@ RUN mkdir -p /app/server/storage \
     /app/collector/outputs \
     /app/logs
 
-# CRITICAL: Set ownership to UID 1000 (Railway's default user)
-# Using UID directly avoids user/group creation issues
+# Set ownership to UID 1000 (Railway's default user)
 RUN chown -R 1000:1000 /app/server && \
     chown -R 1000:1000 /app/collector && \
     chown -R 1000:1000 /app/logs || true
@@ -28,7 +38,6 @@ RUN chmod -R 777 /app/server/storage && \
     chmod -R 777 /app/logs || true
 
 # Handle potential Railway volume mount paths
-# Railway might mount at /storage or /data
 RUN mkdir -p /storage /data && \
     chown -R 1000:1000 /storage /data && \
     chmod -R 777 /storage /data || true
@@ -47,10 +56,7 @@ ENV STORAGE_DIR=/app/server/storage \
 # Switch to UID 1000 (Railway's expected user)
 USER 1000
 
-WORKDIR /app
-
 EXPOSE 3001
 
-# Use the default entrypoint from base image
-# Or explicitly set it if needed
+# Start the application
 CMD ["node", "/app/server/index.js"]
