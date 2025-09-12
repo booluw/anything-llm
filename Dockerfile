@@ -4,11 +4,11 @@ FROM node:18
 # Set working directory inside the container
 WORKDIR /app
 
-# Install pnpm globally (AnythingLLM uses pnpm)
+# Install pnpm globally
 RUN npm install -g pnpm
 
-# Copy package.json only (no pnpm-lock.yaml to avoid errors)
-COPY package.json ./
+# Copy package.json and pnpm-lock.yaml if it exists
+COPY package*.json pnpm-lock.yaml* ./
 
 # Install dependencies
 RUN pnpm install
@@ -16,17 +16,17 @@ RUN pnpm install
 # Copy the entire app source code
 COPY . .
 
-# Build the server app (TypeScript -> JavaScript)
-RUN pnpm --filter server build
+# Build the application
+RUN pnpm build
 
-# Set working directory to the server app
-WORKDIR /app/apps/server
+# Create storage directory with proper permissions
+RUN mkdir -p /app/server/storage && chmod -R 777 /app/server/storage
 
-# Ensure storage folder exists and set permissions for Railway volumes
-RUN mkdir -p storage && chmod -R 777 storage
+# Set working directory to server
+WORKDIR /app/server
 
 # Expose the port AnythingLLM backend listens on
 EXPOSE 3001
 
-# Start the server
-CMD ["node", "dist/main.js"]
+# Start the server using pnpm (recommended approach)
+CMD ["pnpm", "start"]
