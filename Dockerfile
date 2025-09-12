@@ -1,31 +1,25 @@
-FROM node:18
+FROM node:18-alpine
+
+# Install build dependencies including yarn
+RUN apk add --no-cache python3 make g++ yarn
 
 WORKDIR /app
 
-# Install pnpm globally (AnythingLLM uses pnpm)
-RUN npm install -g pnpm
-
-# Copy package.json only (no pnpm-lock.yaml to avoid errors)
-COPY package.json ./
-
-# Install dependencies
-RUN pnpm install
-
-# Copy source code
+# Copy all source code
 COPY . .
 
-# Build the server app (TypeScript -> JavaScript)
-RUN pnpm --filter server build
+# Install dependencies using yarn setup (as per BARE_METAL.md)
+RUN yarn setup
 
-# Generate Prisma client
+# Generate Prisma client for your changes
 RUN cd server && npx prisma generate
 
-# Set working directory to the server app
-WORKDIR /app/apps/server
+# Clean up
+RUN yarn cache clean
 
 USER root
 
-# Your storage permissions (keeping exactly as you had)
+# Your storage permissions
 RUN mkdir -p /app/server/storage \
     /app/server/storage/documents \
     /app/server/storage/vector-cache \
@@ -57,8 +51,10 @@ ENV STORAGE_DIR=/app/server/storage \
     PERSIST_DATA=true \
     NODE_ENV=production \
     SERVER_PORT=3001 \
-    FILE_UPLOAD_MAX_SIZE=1000mb
+    FILE_UPLOAD_MAX_SIZE=100mb
 
 USER 1000
 EXPOSE 3001
-CMD ["node", "index.js"]
+
+# Use yarn prod:server to start (standard for AnythingLLM production)
+CMD ["yarn", "prod:server"]
