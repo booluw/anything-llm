@@ -1,4 +1,3 @@
-# USER root
 FROM ubuntu:jammy-20240627.1 AS base
 
 # Build arguments - Use Railway's UID 1000
@@ -161,64 +160,49 @@ USER anythingllm
 FROM backend-build AS production-build
 WORKDIR /app
 COPY --chown=anythingllm:anythingllm --from=frontend-build /app/frontend/dist /app/server/public
+
+# Switch to root to create the permission fix scripts
 USER root
 
-# RAILWAY STORAGE PERMISSIONS FIX - Create ALL possible storage directories
-RUN mkdir -p /app/server/storage \
-    /app/server/storage/documents \
-    /app/server/storage/vector-cache \
-    /app/server/storage/lancedb \
-    /app/server/storage/outputs \
-    /app/server/storage/uploads \
-    /app/server/storage/workspaces \
-    /app/server/storage/chats \
-    /app/server/storage/models \
-    /app/server/storage/models/context-windows \
-    /app/server/storage/models/embeddings \
-    /app/server/storage/models/custom \
-    /app/server/storage/tmp \
-    /app/server/storage/cache \
-    /app/server/storage/logs \
-    /app/collector/hotdir \
-    /app/collector/outputs \
-    /app/logs
+# Create the permission fix script
+RUN echo '#!/bin/bash' > /fix-permissions.sh && \
+    echo 'echo "=== Fixing Railway storage permissions ==="' >> /fix-permissions.sh && \
+    echo '# Create all necessary directories' >> /fix-permissions.sh && \
+    echo 'mkdir -p /app/server/storage/{documents,vector-cache,lancedb,outputs,uploads,workspaces,chats,models,tmp,cache,logs}' >> /fix-permissions.sh && \
+    echo 'mkdir -p /app/server/storage/models/{context-windows,embeddings,custom}' >> /fix-permissions.sh && \
+    echo 'mkdir -p /app/collector/{hotdir,outputs}' >> /fix-permissions.sh && \
+    echo 'mkdir -p /app/logs' >> /fix-permissions.sh && \
+    echo '# Fix ownership to anythingllm user (UID 1000)' >> /fix-permissions.sh && \
+    echo 'chown -R 1000:1000 /app/server/storage' >> /fix-permissions.sh && \
+    echo 'chown -R 1000:1000 /app/collector' >> /fix-permissions.sh && \
+    echo 'chown -R 1000:1000 /app/logs' >> /fix-permissions.sh && \
+    echo '# Set write permissions' >> /fix-permissions.sh && \
+    echo 'chmod -R 755 /app/server/storage' >> /fix-permissions.sh && \
+    echo 'chmod -R 755 /app/collector' >> /fix-permissions.sh && \
+    echo 'chmod -R 755 /app/logs' >> /fix-permissions.sh && \
+    echo 'echo "=== Permissions fixed ==="' >> /fix-permissions.sh && \
+    chmod +x /fix-permissions.sh
 
-# RAILWAY STORAGE PERMISSIONS FIX - Set ownership for everything under /app
-RUN chown -R 1000:1000 /app
-
-# RAILWAY STORAGE PERMISSIONS FIX - Set write permissions for entire storage tree
-# This allows the app to create any subdirectories it needs at runtime
-RUN chmod -R 755 /app && \
-    chmod -R 777 /app/server/storage && \
-    chmod -R 777 /app/collector && \
-    chmod -R 777 /app/logs
-
-# RAILWAY STORAGE PERMISSIONS FIX - Handle potential Railway volume mount paths
-RUN mkdir -p /storage /data && \
-    chown -R 1000:1000 /storage /data && \
-    chmod -R 777 /storage /data
-
-# RAILWAY STORAGE PERMISSIONS FIX - Create symbolic links for various mount possibilities
-RUN ln -sf /storage /app/server/storage 2>/dev/null || true && \
-    ln -sf /data /app/server/storage 2>/dev/null || true
-
-USER anythingllm
+# Create the entrypoint wrapper
+RUN echo '#!/bin/bash' > /entrypoint-wrapper.sh && \
+    echo '# Fix permissions at deployment time (when volumes are mounted)' >> /entrypoint-wrapper.sh && \
+    echo '/fix-permissions.sh' >> /entrypoint-wrapper.sh && \
+    echo '# Switch to anythingllm user and run original entrypoint' >> /entrypoint-wrapper.sh && \
+    echo 'exec su anythingllm -c "/bin/bash /usr/local/bin/docker-entrypoint.sh $*"' >> /entrypoint-wrapper.sh && \
+    chmod +x /entrypoint-wrapper.sh
 
 # Setup the environment
 ENV NODE_ENV=production
 ENV ANYTHING_LLM_RUNTIME=docker
 ENV DEPLOYMENT_VERSION=1.8.5
-
-# RAILWAY STORAGE PERMISSIONS FIX - Add Railway-specific environment variables
-ENV STORAGE_DIR=/app/server/storage \
-    PERSIST_DATA=true \
-    SERVER_PORT=3001 \
-    FILE_UPLOAD_MAX_SIZE=100mb
+ENV STORAGE_DIR=/app/server/storage
+ENV PERSIST_DATA=true
+ENV SERVER_PORT=3001
+ENV FILE_UPLOAD_MAX_SIZE=1000mb
 
 # Setup the healthcheck
 HEALTHCHECK --interval=1m --timeout=10s --start-period=1m \
   CMD /bin/bash /usr/local/bin/docker-healthcheck.sh || exit 1
 
-# Run the server
-# CMD ["sh", "-c", "tail -f /dev/null"] # For development: keep container open
-ENTRYPOINT ["/bin/bash", "/usr/local/bin/docker-entrypoint.sh"]
+# Use the wrapper entrypoint that fixes permissions at deployment time
+ENTRYPOINT ["/bin/bash", "/entrypoint-wrapper.sh"]
